@@ -2,6 +2,7 @@
 import sys
 import getpass
 import logging
+import re
 
 from bson import InvalidDocument
 from datetime import datetime
@@ -17,6 +18,15 @@ if sys.version_info[0] >= 3:
     unicode = str
 
 class MongoFormatter(logging.Formatter):
+    def __init__(self, fmt=None, datefmt=None):
+        super(MongoFormatter, self).__init__(fmt, datefmt)
+        if fmt:
+            pattern = re.compile(r'(?<=\()(.+?)(?=\))')
+            result = re.findall(pattern, fmt)
+            result.remove('message')
+            result.append('msg')
+            self._fmt = result
+
     def format(self, record):
         """Format exception object as a string"""
         data = record.__dict__.copy()
@@ -26,17 +36,16 @@ class MongoFormatter(logging.Formatter):
         else:
             msg = record.msg
 
-        data.update(
-            username=getpass.getuser(),
-            time=datetime.now(),
-            host=gethostname(),
-            message=msg,
-            args=tuple(unicode(arg) for arg in record.args)
-        )
-        if 'exc_info' in data and data['exc_info']:
-            data['exc_info'] = self.formatException(data['exc_info'])
+        data = { k:data[k] for k in set(self._fmt) & set(data.keys()) }
+        if 'username' in data:
+            data['username'] = getpass.getuser()
+        if 'time' in data:
+            data['time'] = datetime.now()
+        if 'host' in data:
+            data['host'] = gethostname()
+        if 'args' in data:
+            data['args'] = tuple(unicode(arg) for arg in record.args)
         return data
-
 
 class MongoHandler(logging.Handler):
     """ Custom log handler
